@@ -53,9 +53,13 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          api-level: 34
-          build-tools: 34.0.0
+
+      - name: Install Android SDK Packages
+        run: |
+          export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" "platforms;android-34" "ndk;26.1.10909125"
+        shell: bash
 
       - name: Configure Gradle
         run: |
@@ -120,9 +124,12 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          api-level: 34
-          build-tools: 34.0.0
+
+      - name: Install Android SDK Packages
+        run: |
+          export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" "platforms;android-34"
+        shell: bash
 
       - name: Configure Gradle
         run: |
