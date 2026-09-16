@@ -7,10 +7,11 @@ on:
     branches: [main]
 
 jobs:
-  lint-and-test:
+  build-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -30,21 +31,6 @@ jobs:
       - name: Run Tests
         run: npm test
 
-  android-build:
-    needs: lint-and-test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22.11.0'
-          cache: 'npm'
-
-      - name: Install Dependencies
-        run: npm ci
-
       - name: Setup Java
         uses: actions/setup-java@v5
         with:
@@ -54,33 +40,32 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
+          api-level: 34
+          build-tools: 34.0.0
+          ndk: 26.1.10909125
+          cmdline-tools-version: latest
           accept-android-sdk-licenses: true
-
-      - name: Install Android SDK Packages
-        run: |
-          export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0"
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34"
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;26.1.10909125"
-        shell: bash
 
       - name: Configure Gradle
         run: |
-          touch $ANDROID_HOME/gradle.properties
-          echo "org.gradle.jvmargs=-Xmx4096m" >> $ANDROID_HOME/gradle.properties
-          echo "org.gradle.daemon=true" >> $ANDROID_HOME/gradle.properties
+          mkdir -p "$ANDROID_HOME"
+          touch "$ANDROID_HOME/gradle.properties"
+          echo "org.gradle.jvmargs=-Xmx4096m" >> "$ANDROID_HOME/gradle.properties"
+          echo "org.gradle.daemon=true" >> "$ANDROID_HOME/gradle.properties"
         shell: bash
+
+      - name: Check Gradle Tasks
+        working-directory: android
+        run: ./gradlew tasks --no-daemon
 
       - name: Build Release APK
         working-directory: android
-        run: |
-          ./gradlew assembleRelease --no-daemon
+        run: ./gradlew assembleRelease --no-daemon
 
       - name: Compress APK
         run: |
           APK_PATH=$(find android/app/build/outputs/apk/release -name "*.apk" | head -n 1)
           echo "APK_PATH=$APK_PATH" >> $GITHUB_ENV
-          # Compress with gzip (reduces ~40% size)
           gzip -c "$APK_PATH" > "${APK_PATH}.gz"
           echo "Uncompressed APK size:"
           ls -lh "$APK_PATH"
@@ -89,8 +74,7 @@ jobs:
 
       - name: Build Android App Bundle
         working-directory: android
-        run: |
-          ./gradlew bundleRelease --no-daemon
+        run: ./gradlew bundleRelease --no-daemon
 
       - name: Upload APK (Compressed)
         uses: actions/upload-artifact@v4
@@ -104,46 +88,3 @@ jobs:
         with:
           name: talkes-release-aab
           path: android/app/build/outputs/bundle/release/*.aab
-
-  gradle-compatibility-check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22.11.0'
-          cache: 'npm'
-
-      - name: Install Dependencies
-        run: npm ci
-
-      - name: Setup Java
-        uses: actions/setup-java@v5
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          accept-android-sdk-licenses: true
-
-      - name: Install Android SDK Packages
-        run: |
-          export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0"
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34"
-        shell: bash
-
-      - name: Configure Gradle
-        run: |
-          touch $ANDROID_HOME/gradle.properties
-          echo "org.gradle.jvmargs=-Xmx4096m" >> $ANDROID_HOME/gradle.properties
-          echo "org.gradle.daemon=true" >> $ANDROID_HOME/gradle.properties
-        shell: bash
-
-      - name: Check Gradle Tasks
-        working-directory: android
-        run: ./gradlew tasks --no-daemon
