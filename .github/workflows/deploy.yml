@@ -35,16 +35,16 @@ jobs:
 
       # Android SDK setup
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
+        uses: android-actions/setup-android@v3
         with:
-          packages: ''
+          packages: platform-tools
 
       # Install exact Android versions required by Talkes
       - name: Install Android SDK components
         run: |
           sdkmanager "platform-tools"
-          sdkmanager "platforms;android-37"
-          sdkmanager "build-tools;37.0.0"
+          sdkmanager "platforms;android-35"
+          sdkmanager "build-tools;35.0.0"
           sdkmanager "ndk;27.1.12297006"
 
       # Accept Android licenses
