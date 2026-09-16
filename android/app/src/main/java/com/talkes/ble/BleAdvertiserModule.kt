@@ -106,13 +106,20 @@ class BleAdvertiserModule(
             .setConnectable(true)
             .build()
 
-        val payload =
+         val payload =
             "{\"talkesId\":\"$talkesId\",\"name\":\"$name\"}"
 
+        val hexPayload = buildString {
+            for (byte in payload.toByteArray(Charsets.UTF_8)) {
+                append(String.format("%02x", byte))
+            }
+        }
+
         val advertiseData = AdvertiseData.Builder()
+            .addServiceUuid(ParcelUuid(serviceUuid))
             .addServiceData(
                 ParcelUuid(serviceUuid),
-                payload.toByteArray(Charsets.UTF_8)
+                hexPayload.toByteArray(Charsets.UTF_8)
             )
             .setIncludeDeviceName(false)
             .build()

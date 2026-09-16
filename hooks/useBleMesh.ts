@@ -127,8 +127,13 @@ export const useBleMesh = ({
         const serviceData = device.serviceData as Record<string, string>;
         for (const [key, value] of Object.entries(serviceData)) {
           if (key && value) {
-            const decoded = decodeBlePayload(value);
-            if (decoded) return decoded;
+            try {
+              const hexString = decodeMessageBase64(value);
+              const decoded = decodeBlePayload(hexString);
+              if (decoded) return decoded;
+            } catch {
+              continue;
+            }
           }
         }
       }
