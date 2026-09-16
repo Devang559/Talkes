@@ -5,6 +5,10 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build-and-test:
@@ -122,9 +126,9 @@ jobs:
             --stacktrace
 
       # -------------------------
-      # Compress APK
+      # Prepare APK
       # -------------------------
-      - name: Compress APK
+      - name: Prepare APK
         run: |
           APK_PATH=$(find android/app/build/outputs/apk/release -name "*.apk" | head -n 1)
 
@@ -133,15 +137,24 @@ jobs:
             exit 1
           fi
 
+          mkdir -p release
+
+          cp "$APK_PATH" release/Talkes.apk
+
           echo "APK_PATH=$APK_PATH" >> "$GITHUB_ENV"
 
-          gzip -c "$APK_PATH" > "${APK_PATH}.gz"
+          echo "APK:"
+          ls -lh release/Talkes.apk
 
-          echo "Uncompressed APK size:"
-          ls -lh "$APK_PATH"
+      # -------------------------
+      # Compress APK
+      # -------------------------
+      - name: Compress APK
+        run: |
+          gzip -c release/Talkes.apk > release/Talkes.apk.gz
 
-          echo "Compressed APK size:"
-          ls -lh "${APK_PATH}.gz"
+          echo "Compressed APK:"
+          ls -lh release/Talkes.apk.gz
 
       # -------------------------
       # Build AAB
@@ -156,21 +169,65 @@ jobs:
             --stacktrace
 
       # -------------------------
-      # Upload APK
+      # Prepare AAB
+      # -------------------------
+      - name: Prepare AAB
+        run: |
+          AAB_PATH=$(find android/app/build/outputs/bundle/release -name "*.aab" | head -n 1)
+
+          if [ -z "$AAB_PATH" ]; then
+            echo "AAB not found!"
+            exit 1
+          fi
+
+          cp "$AAB_PATH" release/Talkes.aab
+
+          echo "AAB:"
+          ls -lh release/Talkes.aab
+
+      # -------------------------
+      # Upload APK Artifact
+      # -------------------------
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: talkes-release-apk
+          path: release/Talkes.apk
+          if-no-files-found: error
+
+      # -------------------------
+      # Upload Compressed APK
       # -------------------------
       - name: Upload APK (Compressed)
         uses: actions/upload-artifact@v4
         with:
           name: talkes-release-apk-compressed
-          path: ${{ env.APK_PATH }}.gz
+          path: release/Talkes.apk.gz
           if-no-files-found: error
 
       # -------------------------
-      # Upload AAB
+      # Upload AAB Artifact
       # -------------------------
       - name: Upload App Bundle
         uses: actions/upload-artifact@v4
         with:
           name: talkes-release-aab
-          path: android/app/build/outputs/bundle/release/*.aab
+          path: release/Talkes.aab
           if-no-files-found: error
+
+      # -------------------------
+      # Create GitHub Release
+      # -------------------------
+      - name: Create GitHub Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Talkes v1.0.${{ github.run_number }}
+          generate_release_notes: true
+          files: |
+            release/Talkes.apk
+            release/Talkes.aab
+            release/Talkes.apk.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
