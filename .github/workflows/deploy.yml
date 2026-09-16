@@ -1,4 +1,5 @@
-name: CI
+
+name: Talkes CI/CD
 
 on:
   push:
@@ -6,17 +7,26 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
+
+  # ==============================
+  # CI - Lint, TypeScript & Tests
+  # ==============================
   lint-and-test:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22.11.0'
-          cache: 'npm'
+          node-version: "22.11.0"
+          cache: npm
 
       - name: Install Dependencies
         run: npm ci
@@ -24,110 +34,108 @@ jobs:
       - name: Run ESLint
         run: npx eslint . --ext .ts,.tsx
 
-      - name: Run TypeScript Type Check
+      - name: TypeScript Check
         run: npx tsc --noEmit
 
       - name: Run Tests
         run: npm test
 
+
+  # ==============================
+  # Android Build
+  # ==============================
   android-build:
     needs: lint-and-test
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22.11.0'
-          cache: 'npm'
+          node-version: "22.11.0"
+          cache: npm
 
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
-          java-version: '17'
+          distribution: temurin
+          java-version: "17"
 
       - name: Install Dependencies
         run: npm ci
 
+      # Do not install the deprecated "tools" package
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
-          api-level: 34
-          ndk: 26.1.10909125
-          ndk-level: 21
-          build-tools: 34.0.0
+          packages: ""
 
-      - name: Configure Gradle
+      - name: Install Android SDK Packages
         run: |
-          touch $ANDROID_HOME/gradle.properties
-          echo "org.gradle.jvmargs=-Xmx4096m" >> $ANDROID_HOME/gradle.properties
-          echo "org.gradle.daemon=true" >> $ANDROID_HOME/gradle.properties
-        shell: bash
+          sdkmanager "platform-tools"
+          sdkmanager "platforms;android-37"
+          sdkmanager "build-tools;37.0.0"
+          sdkmanager "ndk;27.1.12297006"
 
       - name: Build Release APK
         working-directory: android
-        run: |
-          ./gradlew assembleRelease --no-daemon
+        run: ./gradlew assembleRelease --no-daemon
 
-      - name: Compress APK
-        run: |
-          APK_PATH=$(find android/app/build/outputs/apk/release -name "*.apk" | head -n 1)
-          echo "APK_PATH=$APK_PATH" >> $GITHUB_ENV
-          # Compress with gzip (reduces ~40% size)
-          gzip -c "$APK_PATH" > "${APK_PATH}.gz"
-          echo "Uncompressed APK size:"
-          ls -lh "$APK_PATH"
-          echo "Compressed APK size:"
-          ls -lh "${APK_PATH}.gz"
-
-      - name: Build Android App Bundle
+      - name: Build Release AAB
         working-directory: android
-        run: |
-          ./gradlew bundleRelease --no-daemon
+        run: ./gradlew bundleRelease --no-daemon
 
-      - name: Upload APK (Compressed)
+      - name: Prepare Release Files
+        run: |
+          mkdir -p release
+
+          cp android/app/build/outputs/apk/release/*.apk \
+            release/Talkes-release.apk
+
+          cp android/app/build/outputs/bundle/release/*.aab \
+            release/Talkes-release.aab
+
+          zip -j release/Talkes-release.zip \
+            release/Talkes-release.apk
+
+      # ==============================
+      # Upload GitHub Actions Artifacts
+      # ==============================
+
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: talkes-release-apk-compressed
-          path: ${{ env.APK_PATH }}.gz
-          if-no-files-found: error
+          name: Talkes-APK
+          path: release/Talkes-release.apk
 
-      - name: Upload App Bundle
+      - name: Upload ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: talkes-release-aab
-          path: android/app/build/outputs/bundle/release/*.aab
+          name: Talkes-Release-ZIP
+          path: release/Talkes-release.zip
 
-  gradle-compatibility-check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Upload AAB
+        uses: actions/upload-artifact@v4
         with:
-          node-version: '22.11.0'
-          cache: 'npm'
+          name: Talkes-AAB
+          path: release/Talkes-release.aab
 
-      - name: Install Dependencies
-        run: npm ci
+      # ==============================
+      # GitHub Release
+      # Only runs on main
+      # ==============================
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      - name: Create GitHub Release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
         with:
-          distribution: 'temurin'
-          java-version: '17'
+          tag_name: v1.0.${{ github.run_number }}
+          name: Talkes v1.0.${{ github.run_number }}
+          generate_release_notes: true
+          files: |
+            release/Talkes-release.apk
+            release/Talkes-release.zip
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          api-level: 34
-          ndk: 26.1.10909125
-          ndk-level: 21
-          build-tools: 34.0.0
-
-      - name: Check Gradle Tasks
-        working-directory: android
-        run: ./gradlew tasks --no-daemon
