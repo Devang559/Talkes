@@ -51,15 +51,17 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Android SDK
+      - name: Setup Android
         uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK Packages
-        run: |
-          export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" "platforms;android-34" "ndk;26.1.10909125"
-        shell: bash
+        with:
+          api-level: 34
+          build-tools: 34.0.0
+          ndk: 26.1.10909125
+          cmdline-tools-version: latest
+          packages: |
+            build-tools;34.0.0
+            platforms;android-34
+            ndk;26.1.10909125
 
       - name: Configure Gradle
         run: |
@@ -122,14 +124,15 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Android SDK
+      - name: Setup Android
         uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK Packages
-        run: |
-          export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" "platforms;android-34"
-        shell: bash
+        with:
+          api-level: 34
+          build-tools: 34.0.0
+          cmdline-tools-version: latest
+          packages: |
+            build-tools;34.0.0
+            platforms;android-34
 
       - name: Configure Gradle
         run: |
