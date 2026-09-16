@@ -33,11 +33,23 @@ jobs:
           java-version: 17
           cache: gradle
 
-      # Android SDK setup
+          # Android SDK setup
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          packages: platform-tools
+
+      # Install exact Android versions required by Talkes
+      - name: Install Android SDK components
+        run: |
+          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platform-tools"
+          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platforms;android-35"
+          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "build-tools;35.0.0"
+          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "ndk;27.1.12297006"
+
+
+
+
+
+
 
       # Install exact Android versions required by Talkes
       - name: Install Android SDK components
