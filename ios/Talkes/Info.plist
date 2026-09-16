@@ -26,6 +26,10 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Talkes uses Bluetooth to discover and connect with nearby devices</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>Talkes uses Bluetooth to broadcast your presence to nearby devices</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 	  <!-- Do not change NSAllowsArbitraryLoads to true, or you will risk app rejection! -->

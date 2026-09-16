@@ -25,46 +25,108 @@ DerivedData
 # Android/IntelliJ
 #
 build/
-.idea
 .gradle
+.idea
+.cxx/
 local.properties
 *.iml
 *.hprof
-.cxx/
 *.keystore
 !debug.keystore
 .kotlin/
 
-# node.js
+# Node.js
 #
 node_modules/
 npm-debug.log
 yarn-error.log
+yarn-debug.log*
+pnpm-debug.log*
 
-# fastlane
+# Fastlane
 #
-# It is recommended to not store the screenshots in the git repo. Instead, use fastlane to re-generate the
-# screenshots whenever they are needed.
-# For more information about the recommended setup visit:
-# https://docs.fastlane.tools/best-practices/source-control/
-
 **/fastlane/report.xml
 **/fastlane/Preview.html
 **/fastlane/screenshots
 **/fastlane/test_output
+**/*.screenshots.zip
 
-# Bundle artifact
+# Bundle artifacts
+#
 *.jsbundle
+*.bundle
 
 # Ruby / CocoaPods
+#
 **/Pods/
 /vendor/bundle/
 
-# Temporary files created by Metro to check the health of the file watcher
+# Metro
 .metro-health-check*
 
-# testing
+# Testing
 /coverage
+*.lcov
+
+# TypeScript
+*.tsbuildinfo
+
+# Env files (secrets, API keys, environment variables)
+.env
+.env.local
+.env.development
+.env.staging
+.env.production
+.env.test
+.env.*.local
+
+# Android keystore files
+*.jks
+*.keystore
+
+# Signing configs
+android/keystore.properties
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+Thumbs.db
+Desktop.ini
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+.tmp/
+.tmp.*/
+
+# Classified / Sensitive files
+#
+# Build credentials and signing keys
+android/app/release-key.keystore
+android/app/debug.keystore
+# Firebase configuration files
+google-services.json
+GoogleService-Info.plist
+# API keys and secrets
+api-keys.json
+secrets.json
+# Environment-specific configs with secrets
+.env.secret
+.env.keys
+# Local build configs
+gradle.properties.local
+# Android signing configs
+signing-config.json
+# Private assets
+private-assets/
+secrets/
 
 # Yarn
 .yarn/*
