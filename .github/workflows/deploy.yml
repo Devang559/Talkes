@@ -1,121 +1,79 @@
-name: CI
+name: Build Talkes Release APK
 
 on:
   push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main]
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
-  ci-and-build:
+  build:
     runs-on: ubuntu-latest
 
     steps:
+      # Checkout repository
+      - name: Checkout
+        uses: actions/checkout@v5
 
-      # -----------------------------
-      # Checkout
-      # -----------------------------
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      # -----------------------------
       # Node.js
-      # -----------------------------
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
         with:
-          node-version: '22.11.0'
-          cache: 'npm'
+          node-version: 22
+          cache: npm
 
-      # -----------------------------
-      # Install Dependencies
-      # -----------------------------
-      - name: Install Dependencies
-        run: npm ci
-
-      # -----------------------------
-      # Lint
-      # -----------------------------
-      - name: Run ESLint
-        run: npx eslint . --ext .ts,.tsx
-
-      # -----------------------------
-      # TypeScript
-      # -----------------------------
-      - name: Run TypeScript Type Check
-        run: npx tsc --noEmit
-
-      # -----------------------------
-      # Tests
-      # -----------------------------
-      - name: Run Tests
-        run: npm test
-
-      # -----------------------------
       # Java 17
-      # -----------------------------
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      - name: Set up Java
+        uses: actions/setup-java@v5
         with:
-          distribution: 'temurin'
-          java-version: '17'
+          distribution: temurin
+          java-version: 17
+          cache: gradle
 
-      # -----------------------------
-      # Android SDK
-      # -----------------------------
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      # Android SDK setup
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
         with:
-          accept-android-sdk-licenses: false
+          packages: ''
 
-      # -----------------------------
-      # Install Android SDK packages
-      # -----------------------------
-      - name: Install Android SDK packages
-        shell: bash
+      # Install exact Android versions required by Talkes
+      - name: Install Android SDK components
         run: |
           sdkmanager "platform-tools"
-          sdkmanager "platforms;android-34"
-          sdkmanager "build-tools;34.0.0"
+          sdkmanager "platforms;android-37"
+          sdkmanager "build-tools;37.0.0"
+          sdkmanager "ndk;27.1.12297006"
 
-      # -----------------------------
-      # Install Android NDK
-      # -----------------------------
-      - name: Install Android NDK
-        shell: bash
+      # Accept Android licenses
+      - name: Accept Android SDK licenses
         run: |
-          sdkmanager "ndk;26.1.10909125"
-          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
-          echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
+          yes | sdkmanager --licenses || true
 
-      # -----------------------------
-      # Accept Android Licenses
-      # -----------------------------
-      - name: Accept Android Licenses
-        shell: bash
-        run: |
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-
-      # -----------------------------
-      # Android environment
-      # -----------------------------
-      - name: Configure Android Environment
-        shell: bash
+      # Environment variables
+      - name: Configure Android environment
         run: |
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.1.12297006" >> $GITHUB_ENV
+          echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.1.12297006" >> $GITHUB_ENV
 
-      # -----------------------------
-      # Check Gradle
-      # -----------------------------
-      - name: Check Gradle Tasks
+      # Install JavaScript dependencies
+      - name: Install dependencies
+        run: npm ci
+
+      # Make Gradle executable
+      - name: Make Gradle executable
         working-directory: android
-        run: |
-          chmod +x ./gradlew
-          ./gradlew tasks --no-daemon
+        run: chmod +x gradlew
 
-      # -----------------------------
+      # Check Gradle configuration
+      - name: Check Gradle
+        working-directory: android
+        run: ./gradlew --version
+
       # Build Release APK
-      # -----------------------------
       - name: Build Release APK
         working-directory: android
         run: |
@@ -126,81 +84,58 @@ jobs:
             --warning-mode all \
             --stacktrace
 
-      # -----------------------------
-      # Locate APK
-      # -----------------------------
+      # Find APK
       - name: Locate APK
-        id: apk
-        shell: bash
         run: |
-          APK_PATH=$(find android/app/build/outputs/apk/release \
-            -type f \
-            -name "*.apk" \
-            ! -name "*unaligned*" \
-            | head -1)
+          find android/app/build/outputs/apk -type f -name "*.apk"
 
-          if [ -z "$APK_PATH" ]; then
-            echo "ERROR: APK was not found!"
-            echo "Available build outputs:"
-            find android/app/build/outputs -type f
-            exit 1
-          fi
-
-          echo "APK found: $APK_PATH"
-          echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
-
-      # -----------------------------
-      # Compress APK
-      # -----------------------------
-      - name: Compress APK
+      # Rename APK
+      - name: Prepare APK
         run: |
-          APK_PATH="${{ steps.apk.outputs.apk_path }}"
+          mkdir -p release
+          cp android/app/build/outputs/apk/release/app-release.apk release/Talkes.apk
 
-          gzip -c "$APK_PATH" > "${APK_PATH}.gz"
-
-          echo "Uncompressed APK size:"
-          ls -lh "$APK_PATH"
-
-          echo "Compressed APK size:"
-          ls -lh "${APK_PATH}.gz"
-
-      # -----------------------------
-      # Build Android App Bundle
-      # -----------------------------
-      - name: Build Android App Bundle
+      # Build Release AAB
+      - name: Build Release AAB
         working-directory: android
         run: |
           ./gradlew bundleRelease \
             --no-daemon \
             --max-workers=2 \
-            -Dorg.gradle.parallel=false
+            -Dorg.gradle.parallel=false \
+            --warning-mode all \
+            --stacktrace
 
-      # -----------------------------
-      # Upload APK
-      # -----------------------------
+      # Find AAB
+      - name: Locate AAB
+        run: |
+          find android/app/build/outputs/bundle -type f -name "*.aab"
+
+      # Copy AAB
+      - name: Prepare AAB
+        run: |
+          cp android/app/build/outputs/bundle/release/app-release.aab release/Talkes.aab
+
+      # Upload build artifacts
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: talkes-release-apk
-          path: ${{ steps.apk.outputs.apk_path }}
-          if-no-files-found: error
+          name: Talkes-APK
+          path: release/Talkes.apk
 
-      # -----------------------------
-      # Upload Compressed APK
-      # -----------------------------
-      - name: Upload Compressed APK
+      - name: Upload AAB
         uses: actions/upload-artifact@v4
         with:
-          name: talkes-release-apk-compressed
-          path: ${{ steps.apk.outputs.apk_path }}.gz
-          if-no-files-found: error
+          name: Talkes-AAB
+          path: release/Talkes.aab
 
-      # -----------------------------
-      # Upload AAB
-      # -----------------------------
-      - name: Upload App Bundle
-        uses: actions/upload-artifact@v4
+      # Create GitHub Release
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: talkes-release-aab
-          path: android/app/build/outputs/bundle/release/*.aab
-          if-no-files-found: error
+          tag_name: v1.0.${{ github.run_number }}
+          name: Talkes v1.0.${{ github.run_number }}
+          files: |
+            release/Talkes.apk
+            release/Talkes.aab
+          generate_release_notes: true
