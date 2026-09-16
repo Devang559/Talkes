@@ -11,7 +11,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+
+      # -----------------------------
+      # Checkout
+      # -----------------------------
+      - name: Checkout code
         uses: actions/checkout@v4
 
       # -----------------------------
@@ -20,87 +24,137 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22.11.0"
-          cache: npm
+          node-version: '22.11.0'
+          cache: 'npm'
 
+      # -----------------------------
+      # Install Dependencies
+      # -----------------------------
       - name: Install Dependencies
         run: npm ci
 
+      # -----------------------------
+      # Lint
+      # -----------------------------
       - name: Run ESLint
         run: npx eslint . --ext .ts,.tsx
 
-      - name: TypeScript Type Check
+      # -----------------------------
+      # TypeScript
+      # -----------------------------
+      - name: Run TypeScript Type Check
         run: npx tsc --noEmit
 
+      # -----------------------------
+      # Tests
+      # -----------------------------
       - name: Run Tests
         run: npm test
 
       # -----------------------------
-      # Java
+      # Java 17
       # -----------------------------
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
-          java-version: "17"
+          distribution: 'temurin'
+          java-version: '17'
 
       # -----------------------------
       # Android SDK
       # -----------------------------
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK Packages
-        run: |
-          sdkmanager --install \
-            "platform-tools" \
-            "platforms;android-34" \
-            "build-tools;34.0.0" \
-            "ndk;26.1.10909125"
-
-      - name: Accept Android Licenses
-        run: |
-          yes | sdkmanager --licenses > /dev/null || true
+        with:
+          accept-android-sdk-licenses: false
 
       # -----------------------------
-      # Android Environment
+      # Install Android SDK packages
       # -----------------------------
-      - name: Configure Android Environment
+      - name: Install Android SDK packages
+        shell: bash
         run: |
-          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          sdkmanager "platform-tools"
+          sdkmanager "platforms;android-34"
+          sdkmanager "build-tools;34.0.0"
+
+      # -----------------------------
+      # Install Android NDK
+      # -----------------------------
+      - name: Install Android NDK
+        shell: bash
+        run: |
+          sdkmanager "ndk;26.1.10909125"
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
           echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
 
       # -----------------------------
-      # Gradle
+      # Accept Android Licenses
       # -----------------------------
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Accept Android Licenses
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
 
+      # -----------------------------
+      # Android environment
+      # -----------------------------
+      - name: Configure Android Environment
+        shell: bash
+        run: |
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+
+      # -----------------------------
+      # Check Gradle
+      # -----------------------------
       - name: Check Gradle Tasks
         working-directory: android
-        run: ./gradlew tasks --no-daemon
+        run: |
+          chmod +x ./gradlew
+          ./gradlew tasks --no-daemon
 
       # -----------------------------
-      # Build APK
+      # Build Release APK
       # -----------------------------
       - name: Build Release APK
         working-directory: android
-        run: ./gradlew assembleRelease --no-daemon
+        run: |
+          ./gradlew assembleRelease \
+            --no-daemon \
+            --max-workers=2 \
+            -Dorg.gradle.parallel=false \
+            --warning-mode all \
+            --stacktrace
+
+      # -----------------------------
+      # Locate APK
+      # -----------------------------
+      - name: Locate APK
+        id: apk
+        shell: bash
+        run: |
+          APK_PATH=$(find android/app/build/outputs/apk/release \
+            -type f \
+            -name "*.apk" \
+            ! -name "*unaligned*" \
+            | head -1)
+
+          if [ -z "$APK_PATH" ]; then
+            echo "ERROR: APK was not found!"
+            echo "Available build outputs:"
+            find android/app/build/outputs -type f
+            exit 1
+          fi
+
+          echo "APK found: $APK_PATH"
+          echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
 
       # -----------------------------
       # Compress APK
       # -----------------------------
       - name: Compress APK
         run: |
-          APK_PATH=$(find android/app/build/outputs/apk/release -name "*.apk" | head -n 1)
-
-          if [ -z "$APK_PATH" ]; then
-            echo "Release APK not found"
-            exit 1
-          fi
-
-          echo "APK_PATH=$APK_PATH" >> $GITHUB_ENV
+          APK_PATH="${{ steps.apk.outputs.apk_path }}"
 
           gzip -c "$APK_PATH" > "${APK_PATH}.gz"
 
@@ -111,11 +165,15 @@ jobs:
           ls -lh "${APK_PATH}.gz"
 
       # -----------------------------
-      # Build AAB
+      # Build Android App Bundle
       # -----------------------------
       - name: Build Android App Bundle
         working-directory: android
-        run: ./gradlew bundleRelease --no-daemon
+        run: |
+          ./gradlew bundleRelease \
+            --no-daemon \
+            --max-workers=2 \
+            -Dorg.gradle.parallel=false
 
       # -----------------------------
       # Upload APK
@@ -123,8 +181,18 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
+          name: talkes-release-apk
+          path: ${{ steps.apk.outputs.apk_path }}
+          if-no-files-found: error
+
+      # -----------------------------
+      # Upload Compressed APK
+      # -----------------------------
+      - name: Upload Compressed APK
+        uses: actions/upload-artifact@v4
+        with:
           name: talkes-release-apk-compressed
-          path: ${{ env.APK_PATH }}.gz
+          path: ${{ steps.apk.outputs.apk_path }}.gz
           if-no-files-found: error
 
       # -----------------------------
