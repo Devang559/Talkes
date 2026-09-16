@@ -48,9 +48,6 @@ jobs:
 
 
 
-
-
-
       # Install exact Android versions required by Talkes
       - name: Install Android SDK components
         run: |
