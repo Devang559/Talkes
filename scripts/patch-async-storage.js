@@ -18,19 +18,50 @@ if (fs.existsSync(asyncStorageBuildGradle)) {
   let content = fs.readFileSync(asyncStorageBuildGradle, 'utf8');
   const original = content;
 
-  // Fix deprecated Groovy space-assignment syntax (propName value -> propName = value)
-  content = content.replace(/\n\s*android\.builtInKotlin\s*\n/g, '\n');
-  content = content.replace(/\n\s*android\.newDsl\s*\n/g, '\n');
+  // Remove explicit kotlin-android plugin application (conflicts with RN Gradle Plugin which
+  // already applies Kotlin from the root classpath)
+  content = content.replace(/\n[\s\t]*apply plugin: ["']kotlin-android["']\n/g, '\n');
 
-  // Align AGP classpath version to avoid conflicts with root project
+  // Keep a valid AGP classpath version for the AsyncStorage Gradle buildscript.
+  // React Native 0.87 uses Android Gradle Plugin 8.7.2.
   content = content.replace(
-    /classpath\s+["']com\.android\.tools\.build:gradle:[\d.]+["']/g,
-    'classpath "com.android.tools.build:gradle"'
+    /classpath\s+["']com\.android\.tools\.build:gradle(?::[\d.]+)?["']/g,
+    'classpath "com.android.tools.build:gradle:8.7.2"'
+  );
+
+  // Fix compileSdk to use rootProject.ext (more reliable than project.ext.AsyncStorage)
+  content = content.replace(
+    /compileSdk\s*=\s*project\.ext\.AsyncStorage\.compileSdk/g,
+    "compileSdk = rootProject.ext.has('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 35"
   );
 
   if (content !== original) {
     fs.writeFileSync(asyncStorageBuildGradle, content, 'utf8');
     console.log('Patched @react-native-async-storage/async-storage android/build.gradle');
+  }
+}
+
+const gradlePropertiesPath = path.join(__dirname, '..', 'android', 'gradle.properties');
+
+if (fs.existsSync(gradlePropertiesPath)) {
+  let content = fs.readFileSync(gradlePropertiesPath, 'utf8');
+  const original = content;
+
+  // Ensure android.builtInKotlin and android.newDsl are present with proper = syntax
+  if (!content.includes('android.builtInKotlin')) {
+    content += '\nandroid.builtInKotlin = false\n';
+  }
+  if (!content.includes('android.newDsl')) {
+    content += '\nandroid.newDsl = false\n';
+  }
+
+  // Fix any space-assignment syntax to proper = syntax
+  content = content.replace(/android\.builtInKotlin\s+false/g, 'android.builtInKotlin = false');
+  content = content.replace(/android\.newDsl\s+false/g, 'android.newDsl = false');
+
+  if (content !== original) {
+    fs.writeFileSync(gradlePropertiesPath, content, 'utf8');
+    console.log('Patched android/gradle.properties');
   }
 }
 
