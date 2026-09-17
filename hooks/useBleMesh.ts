@@ -9,9 +9,9 @@ import {
   BLE_SERVICE_UUID,
   BLE_TX_UUID,
   BLE_RX_UUID,
-  decodeBlePayload,
-  encodeMessageBase64,
   decodeMessageBase64,
+  encodeMessageBase64,
+  decodeBlePayload,
   chunkMessage,
   generateMessageId,
   BleMessagePayload,
@@ -128,9 +128,12 @@ export const useBleMesh = ({
         for (const [key, value] of Object.entries(serviceData)) {
           if (key && value) {
             try {
-              const hexString = decodeMessageBase64(value);
-              const decoded = decodeBlePayload(hexString);
-              if (decoded) return decoded;
+              const decoded = decodeMessageBase64(value);
+              const talkesId = decoded.trim();
+              if (talkesId && talkesId.startsWith('TK-')) {
+                const name = device.localName || 'Talkes';
+                return { talkesId, name };
+              }
             } catch {
               continue;
             }

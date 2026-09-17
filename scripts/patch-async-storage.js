@@ -16,16 +16,16 @@ const asyncStorageBuildGradle = path.join(
 
 if (fs.existsSync(asyncStorageBuildGradle)) {
   let content = fs.readFileSync(asyncStorageBuildGradle, 'utf8');
-
   const original = content;
 
+  // Fix deprecated Groovy space-assignment syntax (propName value -> propName = value)
+  content = content.replace(/\n\s*android\.builtInKotlin\s*\n/g, '\n');
+  content = content.replace(/\n\s*android\.newDsl\s*\n/g, '\n');
+
+  // Align AGP classpath version to avoid conflicts with root project
   content = content.replace(
-    /android\.builtInKotlin\s*=/g,
-    'android.builtInKotlin ='
-  );
-  content = content.replace(
-    /android\.newDsl\s*=/g,
-    'android.newDsl ='
+    /classpath\s+["']com\.android\.tools\.build:gradle:[\d.]+["']/g,
+    'classpath "com.android.tools.build:gradle"'
   );
 
   if (content !== original) {
