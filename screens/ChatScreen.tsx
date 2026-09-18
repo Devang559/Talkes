@@ -97,20 +97,20 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
         style={styles.flexOne}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <FlatList
+        <FlatList<Message>
           data={messages}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item: Message) => item.id}
           contentContainerStyle={styles.messagesList}
           ListHeaderComponent={<View style={styles.dateChipWrap}>
             <View style={styles.dateChip}>
               <Text style={styles.dateChipText}>{dateLabel}</Text>
             </View>
           </View>}
-          renderItem={({ item }) => (
+          renderItem={({ item }: { item: Message }) => (
             <View
               style={[
                 styles.bubbleRow,
-                item.isMine ? styles.bubbleRowMine : styles.bubbleRowTheirs,
+                item.isMine ? styles.bubbleRowMine : styles.bubbleTheirs,
               ]}
             >
               <View

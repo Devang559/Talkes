@@ -34,10 +34,10 @@ if (fs.existsSync(docPickerJava)) {
     'private static class ProcessDataTask extends AsyncTask<ReadableArray, Void, ReadableArray>'
   );
 
-  // Remove super() call that takes ExceptionHandler
+  // Replace the legacy AsyncTask constructor that takes React exception handler
   content = content.replace(
-    /super\(reactContext\.getExceptionHandler\(\);\n/g,
-    ''
+    /super\s*\(\s*reactContext\.getExceptionHandler\(\)\s*\)\s*;/g,
+    'super();'
   );
 
   // Rename doInBackgroundGuarded to doInBackground
