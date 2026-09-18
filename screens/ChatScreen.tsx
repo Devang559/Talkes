@@ -26,6 +26,7 @@ export interface Message {
 interface ChatScreenProps {
   peerName: string;
   peerId?: string;
+  peerHandle: string;
   peerAvatar: string;
   isOnline: boolean;
   dateLabel: string;
@@ -36,11 +37,13 @@ interface ChatScreenProps {
   onBack: () => void;
   onSend: (text: string) => void;
   onOpenMenu: () => void;
+  onAttachPress?: () => void;
 }
 
 const ChatScreen: React.FC<ChatScreenProps> = ({
   peerName,
   peerId,
+  peerHandle,
   peerAvatar,
   isOnline,
   dateLabel,
@@ -51,6 +54,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
   onBack,
   onSend,
   onOpenMenu,
+  onAttachPress,
 }) => {
   const [draft, setDraft] = useState('');
 
@@ -76,6 +80,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
         <Image source={{ uri: peerAvatar }} style={styles.peerAvatar} />
         <View style={styles.peerTextWrap}>
           <Text style={styles.peerName}>{peerName.toLowerCase()}</Text>
+          <Text style={styles.peerHandle}>@{peerHandle}</Text>
           <Text style={styles.peerStatus}>
             {isOnline ? 'Connected via Mesh' : 'Offline'}
           </Text>
@@ -139,7 +144,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
         </View>
 
         <View style={styles.composerRow}>
-          <TouchableOpacity style={styles.attachButton}>
+          <TouchableOpacity style={styles.attachButton} onPress={onAttachPress}>
             <Text style={styles.attachIcon}>📎</Text>
           </TouchableOpacity>
           <TextInput
@@ -206,6 +211,7 @@ const styles = StyleSheet.create({
   peerAvatar: { width: 36, height: 36, borderRadius: radius.full },
   peerTextWrap: { flex: 1, marginLeft: spacing.sm },
   peerName: { fontSize: 13, fontWeight: '700', color: colors.textPrimary },
+  peerHandle: { fontSize: 11, color: colors.textMuted },
   peerStatus: { fontSize: 11, color: colors.textMuted },
   peerId: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
   menuIcon: { fontSize: 18, color: colors.textSecondary },

@@ -28,14 +28,26 @@ export interface StoredSettings {
   discoverable: boolean;
 }
 
+export interface StoredFile {
+  id: string;
+  fileName: string;
+  fileSize: number;
+  fileUri: string;
+  mimeType: string;
+  timestamp: number;
+  peerId: string;
+  isMine: boolean;
+}
+
 const KEYS = {
   USER_PROFILE: 'talkes:user_profile',
   CONNECTIONS: 'talkes:connections',
   MESSAGES: 'talkes:messages',
   SETTINGS: 'talkes:settings',
   DEVICE_ID: 'talkes:device_id',
-  TALKES_ID: 'talkes:talkes_id',
-} as const;
+   TALKES_ID: 'talkes:talkes_id',
+   FILES: 'talkes:files',
+ } as const;
 
 export const storage = {
   async getUserProfile(): Promise<StoredUserProfile | null> {
@@ -112,6 +124,24 @@ export const storage = {
     if (talkesId) {
       await this.saveTalkesId(talkesId);
     }
+  },
+
+  async getFiles(): Promise<Record<string, StoredFile[]>> {
+    const raw = await AsyncStorage.getItem(KEYS.FILES);
+    return raw ? JSON.parse(raw) : {};
+  },
+
+  async saveFiles(files: Record<string, StoredFile[]>): Promise<void> {
+    await AsyncStorage.setItem(KEYS.FILES, JSON.stringify(files));
+  },
+
+  async addFile(peerId: string, file: StoredFile): Promise<StoredFile[]> {
+    const allFiles = await this.getFiles();
+    const peerFiles = allFiles[peerId] || [];
+    peerFiles.push(file);
+    allFiles[peerId] = peerFiles;
+    await this.saveFiles(allFiles);
+    return peerFiles;
   },
 };
 

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { StatusBar } from 'react-native';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { StatusBar, Animated } from 'react-native';
 import WelcomeScreen from './screens/WelcomeScreen';
 import DashboardScreen, { Conversation } from './screens/DashboardScreen';
 import NearbyDiscoveryScreen, { Peer } from './screens/NearbyDiscoveryScreen';
@@ -7,18 +7,27 @@ import ConnectionRequestScreen from './screens/ConnectionRequestScreen';
 import ChatScreen, { Message } from './screens/ChatScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import { TabKey } from './components/BottomTabBar';
+import { StyleSheet } from 'react-native';
+
+const fadeStyles = StyleSheet.create({
+  fadeContainer: {
+    flex: 1,
+  },
+});
 import {
   storage,
   StoredUserProfile,
   StoredConnection,
   StoredMessage,
   StoredSettings,
+  StoredFile,
 } from './data/storage';
 import {
   generateTalkesId,
   generateDeviceId,
 } from './data/mesh';
 import { useBleMesh } from './hooks/useBleMesh';
+import { useFileTransfer } from './hooks/useFileTransfer';
 import {
   getAvatarUri,
   getAvatarUriForId,
@@ -87,16 +96,20 @@ const App: React.FC = () => {
   const [messagesByPeer, setMessagesByPeer] = useState<
     Record<string, StoredMessage[]>
   >({});
+  const [_filesByPeer, setFilesByPeer] = useState<
+    Record<string, StoredFile[]>
+  >({});
   const [currentChatPeer, setCurrentChatPeer] = useState<Peer | null>(null);
   const [pendingRequest, setPendingRequest] = useState<Peer | null>(null);
   const [settings, setSettings] = useState<StoredSettings>({
     discoverable: true,
   });
   const [isReady, setIsReady] = useState(false);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     const init = async () => {
-      const [profile, conns, msgs, savedSettings, storedTalkesId, deviceId] =
+      const [profile, conns, msgs, savedSettings, storedTalkesId, deviceId, files] =
         await Promise.all([
           storage.getUserProfile(),
           storage.getConnections(),
@@ -104,6 +117,7 @@ const App: React.FC = () => {
           storage.getSettings(),
           storage.getStoredTalkesId(),
           storage.getDeviceId(),
+          storage.getFiles(),
         ]);
 
       let activeTalkesId = storedTalkesId;
@@ -121,8 +135,9 @@ const App: React.FC = () => {
       if (profile) {
         setUserProfile(profile);
         setConnections(conns);
-        setMessagesByPeer(msgs);
-        setSettings(savedSettings);
+         setMessagesByPeer(msgs);
+          setFilesByPeer(files);
+          setSettings(savedSettings);
         setScreen('main');
       }
 
@@ -232,6 +247,36 @@ const App: React.FC = () => {
     onMessageReceived: handleBleMessageReceived,
     onPeerConnected: handleBlePeerConnected,
     onPeerDisconnected: handleBlePeerDisconnected,
+  });
+
+  const fileTransfer = useFileTransfer({
+    onFileReceived: (file) => {
+      const storedFile: StoredFile = {
+        id: `file_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        fileName: file.fileName,
+        fileSize: file.fileSize,
+        fileUri: file.filePath,
+        mimeType: 'application/octet-stream',
+        timestamp: Date.now(),
+        peerId: currentChatPeer?.id ?? '',
+        isMine: false,
+      };
+
+      setFilesByPeer((prev) => ({
+        ...prev,
+        [storedFile.peerId]: [
+          ...(prev[storedFile.peerId] || []),
+          storedFile,
+        ],
+      }));
+      storage.addFile(storedFile.peerId, storedFile);
+    },
+    onTransferProgress: (_progress) => {
+    },
+    onConnected: (_groupOwner) => {
+    },
+    onPeersFound: (_peers) => {
+    },
   });
 
   const nearbyPeers = useMemo<Peer[]>(() => {
@@ -371,6 +416,21 @@ const App: React.FC = () => {
     await bleMesh.sendMessage(currentChatPeer.id, text);
   };
 
+  const handleAttachPress = async () => {
+    if (!currentChatPeer) return;
+    const conn = connections.find(
+      (c) => c.peerId === currentChatPeer.id,
+    );
+    if (!conn || conn.status !== 'connected') return;
+
+    await fileTransfer.checkWifiP2pSupport();
+    if (!fileTransfer.isWifiDirectSupported) {
+      return;
+    }
+
+    await fileTransfer.selectAndSendFile(conn.peerHandle);
+  };
+
   const handleOpenConversation = (conversation: Conversation) => {
     const conn = connections.find((c) => c.peerId === conversation.id);
     if (conn) {
@@ -408,6 +468,7 @@ const App: React.FC = () => {
     setUserProfile(null);
     setConnections([]);
     setMessagesByPeer({});
+    setFilesByPeer({});
     setSettings({ discoverable: true });
     setCurrentChatPeer(null);
     setPendingRequest(null);
@@ -437,25 +498,35 @@ const App: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    if (!isReady) return;
+    fadeAnim.setValue(0);
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 250,
+      useNativeDriver: true,
+    }).start();
+  }, [screen, currentChatPeer, pendingRequest, isReady, fadeAnim]);
+
   if (!isReady) {
     return null;
   }
 
   if (screen === 'welcome') {
     return (
-      <>
-        <StatusBar barStyle="dark-content" />
-        <WelcomeScreen
-          talkesId={welcomeTalkesId ?? ''}
-          onStartMessaging={handleStartMessaging}
-        />
-      </>
-    );
-  }
+      <Animated.View style={[fadeStyles.fadeContainer, { opacity: fadeAnim }]}>
+         <StatusBar barStyle="dark-content" />
+         <WelcomeScreen
+           talkesId={welcomeTalkesId ?? ''}
+           onStartMessaging={handleStartMessaging}
+         />
+       </Animated.View>
+     );
+   }
 
-  if (screen === 'connectionRequest' && pendingRequest) {
-    return (
-      <>
+   if (screen === 'connectionRequest' && pendingRequest) {
+     return (
+      <Animated.View style={[fadeStyles.fadeContainer, { opacity: fadeAnim }]}>
         <StatusBar barStyle="dark-content" />
         <ConnectionRequestScreen
           requesterName={pendingRequest.name}
@@ -469,17 +540,18 @@ const App: React.FC = () => {
           onReject={handleReject}
           onAccept={handleAccept}
         />
-      </>
+      </Animated.View>
     );
   }
 
   if (screen === 'chat' && currentChatPeer) {
     return (
-      <>
+      <Animated.View style={[fadeStyles.fadeContainer, { opacity: fadeAnim }]}>
         <StatusBar barStyle="dark-content" />
         <ChatScreen
           peerName={currentChatPeer.name}
           peerId={currentChatPeer.handle}
+          peerHandle={currentChatPeer.id}
           peerAvatar={currentChatPeer.avatar}
           isOnline={chatIsOnline}
           dateLabel={chatDateLabel}
@@ -490,13 +562,14 @@ const App: React.FC = () => {
           onBack={handleBack}
           onOpenMenu={() => {}}
           onSend={handleSend}
+          onAttachPress={handleAttachPress}
         />
-      </>
+      </Animated.View>
     );
   }
 
   return (
-    <>
+    <Animated.View style={[fadeStyles.fadeContainer, { opacity: fadeAnim }]}>
       <StatusBar hidden />
       {activeTab === 'home' && (
         <DashboardScreen
@@ -544,7 +617,7 @@ const App: React.FC = () => {
           onClearLocalData={handleClearLocalData}
         />
       )}
-    </>
+    </Animated.View>
   );
 };
 

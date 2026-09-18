@@ -81,3 +81,40 @@ jest.mock('react-native-ble-plx', () => {
     Subscription: jest.fn(),
   };
 });
+
+jest.mock('react-native-document-picker', () => ({
+  __esModule: true,
+  default: {
+    pickSingle: jest.fn(() =>
+      Promise.resolve({
+        uri: 'file:///test/document.pdf',
+        name: 'document.pdf',
+        type: 'application/pdf',
+        size: 1024,
+      })
+    ),
+    isCancel: jest.fn(() => false),
+    types: {
+      images: 'image/*',
+      video: 'video/*',
+      audio: 'audio/*',
+      pdf: 'application/pdf',
+      doc: 'application/msword',
+      docx:
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    },
+  },
+}));
+
+jest.mock('react-native/Libraries/EventEmitter/NativeEventEmitter', () => {
+  const { EventEmitter } = require('events');
+  return class NativeEventEmitter extends EventEmitter {
+    addListener(eventName: string, listener: (...args: any[]) => void) {
+      super.addListener(eventName, listener);
+      return { remove: () => this.removeListener(eventName, listener) };
+    }
+    removeListener() {
+      return this;
+    }
+  };
+});
