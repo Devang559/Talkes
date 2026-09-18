@@ -250,3 +250,14 @@ Messages are Base64 encoded as the BLE characteristic value and chunked if longe
 ## License
 
 This project is licensed under the MIT License.
+
+The future Update Will includes
+->smoother transition
+->group Talking
+->both online and offline communication 
+->hight speed files documents Sharing
+  Tuned for more 🤟
+
+
+
+
