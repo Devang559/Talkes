@@ -26,7 +26,6 @@ const patches = [
       [/abortOnError false/, 'abortOnError = false'],
       [/url "\$\{project\.ext\.resolveModulePath\("react-native"\)\}\/android"/,
        'url = "${project.ext.resolveModulePath("react-native")}/android"'],
-      [/^(\s*)apply plugin: ['"]kotlin-android['"]\n/m, '$1// Kotlin handled by AGP built-in Kotlin (AGP 9+)\n'],
     ],
   },
   {
@@ -78,7 +77,6 @@ const patches = [
       [/abortOnError false/, 'abortOnError = false'],
       [/url "\$rootDir\/\.\.\/node_modules\/react-native\/android"/,
        'url = "$rootDir/../node_modules/react-native/android"'],
-      [/^(\s*)apply plugin: ['"]kotlin-android['"]\n/m, '$1// Kotlin handled by AGP built-in Kotlin (AGP 9+)\n'],
     ],
   },
 ];
@@ -102,6 +100,38 @@ for (const { name, file, fixes } of patches) {
     fs.writeFileSync(filePath, content, 'utf8');
     console.log(`Patched ${name} build.gradle`);
     anyPatched = true;
+  }
+}
+
+// Add Room dependencies to AsyncStorage outside the useNextStorage guard
+// so that StorageSupplier.kt (which is in src/main/java and always compiled)
+// can resolve Room and SQLite imports on Gradle 10 / AGP 9+.
+const asyncStorageGradlePath = path.join(
+  nodeModules,
+  '@react-native-async-storage',
+  'async-storage',
+  'android',
+  'build.gradle'
+);
+
+if (fs.existsSync(asyncStorageGradlePath)) {
+  let gradle = fs.readFileSync(asyncStorageGradlePath, 'utf8');
+  const originalGradle = gradle;
+
+  if (!gradle.includes('androidx.room:room-runtime:2.6.1"')) {
+    gradle = gradle.replace(
+      /dependencies \{\n    if \(useNextStorage\)/,
+      'dependencies {\n' +
+        '    implementation "androidx.room:room-runtime:2.6.1"\n' +
+        '    implementation "androidx.room:room-ktx:2.6.1"\n' +
+        '\n    if (useNextStorage)'
+    );
+    console.log('Added Room dependencies to async-storage build.gradle');
+    anyPatched = true;
+  }
+
+  if (gradle !== originalGradle) {
+    fs.writeFileSync(asyncStorageGradlePath, gradle, 'utf8');
   }
 }
 
