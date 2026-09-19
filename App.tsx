@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { StatusBar, Animated } from 'react-native';
+import { StatusBar, Animated, Platform } from 'react-native';
 import WelcomeScreen from './screens/WelcomeScreen';
 import DashboardScreen, { Conversation } from './screens/DashboardScreen';
 import NearbyDiscoveryScreen, { Peer } from './screens/NearbyDiscoveryScreen';
@@ -9,11 +9,12 @@ import SettingsScreen from './screens/SettingsScreen';
 import { TabKey } from './components/BottomTabBar';
 import { StyleSheet } from 'react-native';
 
-const fadeStyles = StyleSheet.create({
+const styles = StyleSheet.create({
   fadeContainer: {
     flex: 1,
   },
 });
+
 import {
   storage,
   StoredUserProfile,
@@ -83,6 +84,25 @@ function storedToScreenMessages(stored: StoredMessage[]): Message[] {
   }));
 }
 
+const FadeTransition: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    fadeAnim.setValue(0);
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 250,
+      useNativeDriver: true,
+    }).start();
+  }, [fadeAnim]);
+
+  return (
+    <Animated.View style={[styles.fadeContainer, { opacity: fadeAnim }]}>
+      {children}
+    </Animated.View>
+  );
+};
+
 const App: React.FC = () => {
   const [screen, setScreen] = useState<Screen>('welcome');
   const [activeTab, setActiveTab] = useState<TabKey>('home');
@@ -105,7 +125,7 @@ const App: React.FC = () => {
     discoverable: true,
   });
   const [isReady, setIsReady] = useState(false);
-  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const [wifiDirectPeerAddress, setWifiDirectPeerAddress] = useState<string | null>(null);
 
   useEffect(() => {
     const init = async () => {
@@ -135,9 +155,9 @@ const App: React.FC = () => {
       if (profile) {
         setUserProfile(profile);
         setConnections(conns);
-         setMessagesByPeer(msgs);
-          setFilesByPeer(files);
-          setSettings(savedSettings);
+        setMessagesByPeer(msgs);
+        setFilesByPeer(files);
+        setSettings(savedSettings);
         setScreen('main');
       }
 
@@ -273,11 +293,31 @@ const App: React.FC = () => {
     },
     onTransferProgress: (_progress) => {
     },
-    onConnected: (_groupOwner) => {
+    onConnected: (groupOwner) => {
+      setWifiDirectPeerAddress(groupOwner);
     },
     onPeersFound: (_peers) => {
     },
   });
+
+  // --- Start WiFi Direct server on app init so we can receive files ---
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    const initWifiDirect = async () => {
+      const supported = await fileTransfer.checkWifiP2pSupport();
+      if (supported) {
+        await fileTransfer.startServer();
+      }
+    };
+    initWifiDirect();
+
+    return () => {
+      if (Platform.OS === 'android') {
+        fileTransfer.stopServer();
+      }
+    };
+  }, [fileTransfer]);
 
   const nearbyPeers = useMemo<Peer[]>(() => {
     return bleMesh.knownPeers.map((p) => ({
@@ -423,12 +463,35 @@ const App: React.FC = () => {
     );
     if (!conn || conn.status !== 'connected') return;
 
-    await fileTransfer.checkWifiP2pSupport();
-    if (!fileTransfer.isWifiDirectSupported) {
+    const supported = await fileTransfer.checkWifiP2pSupport();
+    if (!supported) {
       return;
     }
 
-    await fileTransfer.selectAndSendFile(conn.peerHandle);
+    // Server is already started on app init; ensure it's running
+    if (!fileTransfer.isServerRunning) {
+      await fileTransfer.startServer();
+    }
+
+    // Create a WiFi Direct group so we have a network to transfer over
+    await fileTransfer.createGroup();
+
+    // Give the group time to establish
+    await new Promise<void>((resolve) => setTimeout(() => resolve(), 1500));
+
+    // Determine the peer's address for TCP file transfer
+    // Priority: use the WiFi Direct group owner address if available,
+    // otherwise fall back to discovery
+    let peerAddress = wifiDirectPeerAddress;
+
+    if (!peerAddress) {
+      await fileTransfer.startDiscovery();
+      await new Promise<void>((resolve) => setTimeout(() => resolve(), 1000));
+      peerAddress = fileTransfer.connectedPeerAddress || '192.168.49.1';
+    }
+
+    // Open document picker and send file
+    await fileTransfer.selectAndSendFile(peerAddress);
   };
 
   const handleOpenConversation = (conversation: Conversation) => {
@@ -498,35 +561,25 @@ const App: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    if (!isReady) return;
-    fadeAnim.setValue(0);
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 250,
-      useNativeDriver: true,
-    }).start();
-  }, [screen, currentChatPeer, pendingRequest, isReady, fadeAnim]);
-
   if (!isReady) {
     return null;
   }
 
   if (screen === 'welcome') {
     return (
-      <Animated.View style={[fadeStyles.fadeContainer, { opacity: fadeAnim }]}>
-         <StatusBar barStyle="dark-content" />
-         <WelcomeScreen
-           talkesId={welcomeTalkesId ?? ''}
-           onStartMessaging={handleStartMessaging}
-         />
-       </Animated.View>
-     );
-   }
+      <FadeTransition>
+        <StatusBar barStyle="dark-content" />
+        <WelcomeScreen
+          talkesId={welcomeTalkesId ?? ''}
+          onStartMessaging={handleStartMessaging}
+        />
+      </FadeTransition>
+    );
+  }
 
-   if (screen === 'connectionRequest' && pendingRequest) {
-     return (
-      <Animated.View style={[fadeStyles.fadeContainer, { opacity: fadeAnim }]}>
+  if (screen === 'connectionRequest' && pendingRequest) {
+    return (
+      <FadeTransition>
         <StatusBar barStyle="dark-content" />
         <ConnectionRequestScreen
           requesterName={pendingRequest.name}
@@ -540,13 +593,13 @@ const App: React.FC = () => {
           onReject={handleReject}
           onAccept={handleAccept}
         />
-      </Animated.View>
+      </FadeTransition>
     );
   }
 
   if (screen === 'chat' && currentChatPeer) {
     return (
-      <Animated.View style={[fadeStyles.fadeContainer, { opacity: fadeAnim }]}>
+      <FadeTransition>
         <StatusBar barStyle="dark-content" />
         <ChatScreen
           peerName={currentChatPeer.name}
@@ -564,12 +617,12 @@ const App: React.FC = () => {
           onSend={handleSend}
           onAttachPress={handleAttachPress}
         />
-      </Animated.View>
+      </FadeTransition>
     );
   }
 
   return (
-    <Animated.View style={[fadeStyles.fadeContainer, { opacity: fadeAnim }]}>
+    <FadeTransition>
       <StatusBar hidden />
       {activeTab === 'home' && (
         <DashboardScreen
@@ -617,7 +670,7 @@ const App: React.FC = () => {
           onClearLocalData={handleClearLocalData}
         />
       )}
-    </Animated.View>
+    </FadeTransition>
   );
 };
 

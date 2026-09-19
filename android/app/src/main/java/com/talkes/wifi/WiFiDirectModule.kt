@@ -5,9 +5,11 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.net.wifi.WifiManager
 import android.net.wifi.p2p.WifiP2pConfig
+import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
 import android.net.wifi.p2p.WifiP2pManager.ActionListener
 import android.net.wifi.p2p.WifiP2pManager.Channel
+import android.net.wifi.p2p.WifiP2pManager.ConnectionInfoListener
 import android.net.wifi.p2p.WifiP2pManager.PeerListListener
 import android.os.Looper
 import androidx.core.content.ContextCompat
@@ -36,6 +38,8 @@ class WiFiDirectModule(private val reactContext: ReactApplicationContext) :
     private var channel: Channel? = null
     private val executor = Executors.newSingleThreadExecutor()
     private var serverSocket: ServerSocket? = null
+
+    private val TRANSFER_PORT = 8888
 
     init {
         initializeP2p()
@@ -70,6 +74,15 @@ class WiFiDirectModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun startDiscovery(promise: Promise) {
+        if (ContextCompat.checkSelfPermission(
+                reactContext,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            promise.reject("LOCATION_PERMISSION_DENIED", "Location permission not granted")
+            return
+        }
+
         val peersListener = PeerListListener { peers ->
             val params = Arguments.createMap()
             val peerArray = Arguments.createArray()
@@ -92,6 +105,15 @@ class WiFiDirectModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun connectToDevice(deviceAddress: String, promise: Promise) {
+        if (ContextCompat.checkSelfPermission(
+                reactContext,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            promise.reject("LOCATION_PERMISSION_DENIED", "Location permission not granted")
+            return
+        }
+
         val config = WifiP2pConfig()
         config.deviceAddress = deviceAddress
 
@@ -102,6 +124,18 @@ class WiFiDirectModule(private val reactContext: ReactApplicationContext) :
 
             override fun onFailure(reason: Int) {
                 promise.reject("CONNECT_FAILED", "Connection failed: $reason")
+            }
+        })
+
+        wifiP2pManager?.requestConnectionInfo(channel, object : ConnectionInfoListener {
+            override fun onConnectionInfoAvailable(info: WifiP2pInfo) {
+                val params = Arguments.createMap()
+                val groupOwnerAddress = info.groupOwnerAddress?.hostAddress ?: ""
+                params.putString("groupOwnerAddress", groupOwnerAddress)
+                params.putBoolean("isGroupOwner", info.isGroupOwner)
+                params.putString("deviceAddress", "")
+                sendEvent("WiFiDirectConnected", params)
+                promise.resolve(true)
             }
         })
     }
@@ -123,6 +157,7 @@ class WiFiDirectModule(private val reactContext: ReactApplicationContext) :
     fun removeGroup(promise: Promise) {
         wifiP2pManager?.removeGroup(channel, object : ActionListener {
             override fun onSuccess() {
+                stopServer()
                 promise.resolve(true)
             }
 
@@ -133,10 +168,51 @@ class WiFiDirectModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
+    fun startServer(promise: Promise) {
+        if (serverSocket?.isBound == true) {
+            promise.resolve(true)
+            return
+        }
+
+        try {
+            serverSocket = ServerSocket(TRANSFER_PORT)
+            executor.execute {
+                sendEvent("ServerStarted", null)
+
+                while (true) {
+                    val clientSocket = serverSocket?.accept() ?: break
+                    handleClient(clientSocket)
+                }
+            }
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("SERVER_START_FAILED", e.message ?: "Failed to start server")
+        }
+    }
+
+    @ReactMethod
+    fun stopServer(promise: Promise) {
+        try {
+            stopServer()
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("STOP_SERVER_FAILED", e.message ?: "Failed to stop server")
+        }
+    }
+
+    private fun stopServer() {
+        try {
+            serverSocket?.close()
+        } catch (ignored: Exception) {
+        }
+        serverSocket = null
+    }
+
+    @ReactMethod
     fun sendFile(filePath: String, peerAddress: String, promise: Promise) {
         executor.execute {
             var socket: Socket? = null
-            var output: OutputStream? = null
+            var output: java.io.OutputStream? = null
             var input: FileInputStream? = null
             try {
                 val file = File(filePath)
@@ -144,7 +220,7 @@ class WiFiDirectModule(private val reactContext: ReactApplicationContext) :
                 val fileName = file.name
 
                 socket = Socket()
-                socket?.connect(InetSocketAddress(peerAddress, 8888), 30000)
+                socket?.connect(InetSocketAddress(peerAddress, TRANSFER_PORT), 30000)
                 output = socket?.getOutputStream()
                 input = FileInputStream(file)
 
@@ -191,30 +267,12 @@ class WiFiDirectModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
-    private fun startServer() {
-        executor.execute {
-            try {
-                serverSocket = ServerSocket(8889)
-                sendEvent("ServerStarted", null)
-
-                while (true) {
-                    val clientSocket = serverSocket?.accept() ?: continue
-                    handleClient(clientSocket)
-                }
-            } catch (e: Exception) {
-                val params = Arguments.createMap()
-                params.putString("error", e.message ?: "Unknown error")
-                sendEvent("ServerError", params)
-            }
-        }
-    }
-
     private fun handleClient(socket: Socket) {
         var input: InputStream? = null
         var output: FileOutputStream? = null
         try {
             input = socket.inputStream
-            val reader = BufferedReader(InputStreamReader(input))
+            val reader = java.io.BufferedReader(InputStreamReader(input))
 
             val metadataLine = reader.readLine()
             val parts = metadataLine.split("|")

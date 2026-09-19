@@ -32,6 +32,8 @@ export const useFileTransfer = ({
   const [isWifiDirectSupported, setIsWifiDirectSupported] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectedPeerAddress, setConnectedPeerAddress] = useState<string | null>(null);
+  const [groupOwnerAddress, setGroupOwnerAddress] = useState<string | null>(null);
+  const [isServerRunning, setIsServerRunning] = useState(false);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -47,6 +49,7 @@ export const useFileTransfer = ({
         switch (event.type) {
           case 'WiFiDirectConnected':
             setConnectedPeerAddress(event.groupOwnerAddress);
+            setGroupOwnerAddress(event.groupOwnerAddress);
             setIsConnecting(false);
             onConnected(event.groupOwnerAddress);
             break;
@@ -84,6 +87,9 @@ export const useFileTransfer = ({
           case 'WiFiDirectConnecting':
             setIsConnecting(true);
             break;
+          case 'ServerStarted':
+            setIsServerRunning(true);
+            break;
         }
       }
     );
@@ -107,12 +113,17 @@ export const useFileTransfer = ({
   }, []);
 
   const startDiscovery = useCallback(async () => {
-    if (Platform.OS !== 'android') return;
+    if (Platform.OS !== 'android') return [];
 
     const WiFiDirect = NativeModules.WiFiDirect;
-    if (!WiFiDirect) return;
+    if (!WiFiDirect) return [];
 
-    await WiFiDirect.startDiscovery();
+    try {
+      const result = await WiFiDirect.startDiscovery();
+      return result;
+    } catch {
+      return false;
+    }
   }, []);
 
   const connectToDevice = useCallback(
@@ -133,6 +144,49 @@ export const useFileTransfer = ({
     },
     []
   );
+
+  const startServer = useCallback(async (): Promise<boolean> => {
+    if (Platform.OS !== 'android') return false;
+
+    const WiFiDirect = NativeModules.WiFiDirect;
+    if (!WiFiDirect) return false;
+
+    try {
+      await WiFiDirect.startServer();
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const stopServer = useCallback(async (): Promise<boolean> => {
+    if (Platform.OS !== 'android') return false;
+
+    const WiFiDirect = NativeModules.WiFiDirect;
+    if (!WiFiDirect) return false;
+
+    try {
+      await WiFiDirect.stopServer();
+      setIsServerRunning(false);
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const createGroup = useCallback(async (): Promise<boolean> => {
+    if (Platform.OS !== 'android') return false;
+
+    const WiFiDirect = NativeModules.WiFiDirect;
+    if (!WiFiDirect) return false;
+
+    try {
+      await WiFiDirect.createGroup();
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
 
   const sendFile = useCallback(
     async (filePath: string, peerAddress: string): Promise<boolean> => {
@@ -179,15 +233,41 @@ export const useFileTransfer = ({
     [sendFile]
   );
 
+  const sendFileToPeer = useCallback(
+    async (peerAddress: string): Promise<boolean> => {
+      const result = await DocumentPicker.pickSingle({
+        type: [
+          DocumentPicker.types.images,
+          DocumentPicker.types.video,
+          DocumentPicker.types.audio,
+          DocumentPicker.types.pdf,
+          DocumentPicker.types.doc,
+          DocumentPicker.types.docx,
+        ],
+      });
+
+      const localUri = result.uri;
+      const filePath = localUri.replace('file://', '');
+      return await sendFile(filePath, peerAddress);
+    },
+    [sendFile]
+  );
+
   return {
     isWifiDirectSupported,
     isConnecting,
     connectedPeerAddress,
+    groupOwnerAddress,
+    isServerRunning,
     checkWifiP2pSupport,
     startDiscovery,
     connectToDevice,
+    startServer,
+    stopServer,
+    createGroup,
     sendFile,
     selectAndSendFile,
+    sendFileToPeer,
   };
 };
 
