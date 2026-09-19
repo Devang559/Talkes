@@ -305,19 +305,24 @@ const App: React.FC = () => {
     if (Platform.OS !== 'android') return;
 
     const initWifiDirect = async () => {
-      const supported = await fileTransfer.checkWifiP2pSupport();
-      if (supported) {
-        await fileTransfer.startServer();
+      try {
+        const supported = await fileTransfer.checkWifiP2pSupport();
+        if (supported) {
+          await fileTransfer.startServer();
+        }
+      } catch {
+        // WiFi Direct server start failure is non-fatal
       }
     };
     initWifiDirect();
 
     return () => {
       if (Platform.OS === 'android') {
-        fileTransfer.stopServer();
+        fileTransfer.stopServer().catch(() => {});
       }
     };
-  }, [fileTransfer]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const nearbyPeers = useMemo<Peer[]>(() => {
     return bleMesh.knownPeers.map((p) => ({
@@ -463,35 +468,39 @@ const App: React.FC = () => {
     );
     if (!conn || conn.status !== 'connected') return;
 
-    const supported = await fileTransfer.checkWifiP2pSupport();
-    if (!supported) {
-      return;
+    try {
+      const supported = await fileTransfer.checkWifiP2pSupport();
+      if (!supported) {
+        return;
+      }
+
+      // Server is already started on app init; ensure it's running
+      if (!fileTransfer.isServerRunning) {
+        await fileTransfer.startServer();
+      }
+
+      // Create a WiFi Direct group so we have a network to transfer over
+      await fileTransfer.createGroup();
+
+      // Give the group time to establish
+      await new Promise<void>((resolve) => setTimeout(() => resolve(), 1500));
+
+      // Determine the peer's address for TCP file transfer
+      // Priority: use the WiFi Direct group owner address if available,
+      // otherwise fall back to discovery
+      let peerAddress = wifiDirectPeerAddress;
+
+      if (!peerAddress) {
+        await fileTransfer.startDiscovery();
+        await new Promise<void>((resolve) => setTimeout(() => resolve(), 1000));
+        peerAddress = fileTransfer.connectedPeerAddress || '192.168.49.1';
+      }
+
+      // Open document picker and send file
+      await fileTransfer.selectAndSendFile(peerAddress);
+    } catch (e) {
+      console.error('File transfer error:', e);
     }
-
-    // Server is already started on app init; ensure it's running
-    if (!fileTransfer.isServerRunning) {
-      await fileTransfer.startServer();
-    }
-
-    // Create a WiFi Direct group so we have a network to transfer over
-    await fileTransfer.createGroup();
-
-    // Give the group time to establish
-    await new Promise<void>((resolve) => setTimeout(() => resolve(), 1500));
-
-    // Determine the peer's address for TCP file transfer
-    // Priority: use the WiFi Direct group owner address if available,
-    // otherwise fall back to discovery
-    let peerAddress = wifiDirectPeerAddress;
-
-    if (!peerAddress) {
-      await fileTransfer.startDiscovery();
-      await new Promise<void>((resolve) => setTimeout(() => resolve(), 1000));
-      peerAddress = fileTransfer.connectedPeerAddress || '192.168.49.1';
-    }
-
-    // Open document picker and send file
-    await fileTransfer.selectAndSendFile(peerAddress);
   };
 
   const handleOpenConversation = (conversation: Conversation) => {
