@@ -13,6 +13,14 @@ const styles = StyleSheet.create({
   fadeContainer: {
     flex: 1,
   },
+  tabFadeContainer: {
+    flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
 });
 
 import {
@@ -91,7 +99,7 @@ const FadeTransition: React.FC<{ children: React.ReactNode }> = ({ children }) =
     fadeAnim.setValue(0);
     Animated.timing(fadeAnim, {
       toValue: 1,
-      duration: 250,
+      duration: 350,
       useNativeDriver: true,
     }).start();
   }, [fadeAnim]);
@@ -126,6 +134,20 @@ const App: React.FC = () => {
   });
   const [isReady, setIsReady] = useState(false);
   const [wifiDirectPeerAddress, setWifiDirectPeerAddress] = useState<string | null>(null);
+
+  const tabFadeAnim = useRef(new Animated.Value(1)).current;
+
+  const handleTabChange = (tab: TabKey) => {
+    if (tab !== activeTab) {
+      tabFadeAnim.setValue(0);
+      Animated.timing(tabFadeAnim, {
+        toValue: 1,
+        duration: 350,
+        useNativeDriver: true,
+      }).start();
+      setActiveTab(tab);
+    }
+  };
 
   useEffect(() => {
     const init = async () => {
@@ -321,8 +343,8 @@ const App: React.FC = () => {
         fileTransfer.stopServer().catch(() => {});
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileTransfer.checkWifiP2pSupport, fileTransfer.startServer, fileTransfer.stopServer]);
 
   const nearbyPeers = useMemo<Peer[]>(() => {
     return bleMesh.knownPeers.map((p) => ({
@@ -487,7 +509,7 @@ const App: React.FC = () => {
 
       // Determine the peer's address for TCP file transfer
       // Priority: use the WiFi Direct group owner address if available,
-      // otherwise fall back to discovery
+      // otherwise fall back to the standard WiFi Direct group owner IP
       let peerAddress = wifiDirectPeerAddress;
 
       if (!peerAddress) {
@@ -561,15 +583,6 @@ const App: React.FC = () => {
     setScreen('main');
   };
 
-  const handleTabChange = (tab: TabKey) => {
-    setActiveTab(tab);
-    if (screen !== 'main') {
-      setCurrentChatPeer(null);
-      setPendingRequest(null);
-      setScreen('main');
-    }
-  };
-
   if (!isReady) {
     return null;
   }
@@ -633,52 +646,54 @@ const App: React.FC = () => {
   return (
     <FadeTransition>
       <StatusBar hidden />
-      {activeTab === 'home' && (
-        <DashboardScreen
-          userName={userProfile?.name ?? 'User'}
-          userId={userTalkesId}
-          userAvatar={userAvatarUri}
-          isActive
-          isScanning={bleMesh.isScanning}
-          conversations={conversations}
-          activeTab={activeTab}
-          onChangeTab={setActiveTab}
-          onOpenConversation={handleOpenConversation}
-          onOpenChatCompose={handleOpenChatCompose}
-        />
-      )}
-      {activeTab === 'nearby' && (
-        <NearbyDiscoveryScreen
-          isScanning={bleMesh.isScanning}
-          radiusMeters={100}
-          peers={nearbyPeers}
-          activeTab={activeTab}
-          onChangeTab={setActiveTab}
-          onConnect={handleConnect}
-          onSearch={bleMesh.isScanning ? bleMesh.stopScan : bleMesh.startScan}
-          onToggleAdvertising={bleMesh.isAdvertising ? bleMesh.stopAdvertising : bleMesh.startAdvertising}
-          isAdvertising={bleMesh.isAdvertising}
-          isPermissionGranted={bleMesh.hasPermission}
-          onRequestPermissions={bleMesh.requestPermissions}
-        />
-      )}
-      {activeTab === 'settings' && (
-        <SettingsScreen
-          userAvatar={userAvatarUri}
-          initialDisplayName={userProfile?.name ?? 'User'}
-          initialDiscoverable={settings.discoverable}
-          talkesId={userTalkesId}
-          appVersion="1.2.0"
-          buildNumber="294"
-          protocolVersion="V4"
-          activeTab={activeTab}
-          onChangeTab={setActiveTab}
-          onSaveDisplayName={handleSaveDisplayName}
-          onToggleDiscoverability={handleToggleDiscoverability}
-          onOpenLowPowerMode={() => {}}
-          onClearLocalData={handleClearLocalData}
-        />
-      )}
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: tabFadeAnim }]}>
+        {activeTab === 'home' && (
+          <DashboardScreen
+            userName={userProfile?.name ?? 'User'}
+            userId={userTalkesId}
+            userAvatar={userAvatarUri}
+            isActive
+            isScanning={bleMesh.isScanning}
+            conversations={conversations}
+            activeTab={activeTab}
+            onChangeTab={handleTabChange}
+            onOpenConversation={handleOpenConversation}
+            onOpenChatCompose={handleOpenChatCompose}
+          />
+        )}
+        {activeTab === 'nearby' && (
+          <NearbyDiscoveryScreen
+            isScanning={bleMesh.isScanning}
+            radiusMeters={100}
+            peers={nearbyPeers}
+            activeTab={activeTab}
+            onChangeTab={handleTabChange}
+            onConnect={handleConnect}
+            onSearch={bleMesh.isScanning ? bleMesh.stopScan : bleMesh.startScan}
+            onToggleAdvertising={bleMesh.isAdvertising ? bleMesh.stopAdvertising : bleMesh.startAdvertising}
+            isAdvertising={bleMesh.isAdvertising}
+            isPermissionGranted={bleMesh.hasPermission}
+            onRequestPermissions={bleMesh.requestPermissions}
+          />
+        )}
+        {activeTab === 'settings' && (
+          <SettingsScreen
+            userAvatar={userAvatarUri}
+            initialDisplayName={userProfile?.name ?? 'User'}
+            initialDiscoverable={settings.discoverable}
+            talkesId={userTalkesId}
+            appVersion="1.2.0"
+            buildNumber="294"
+            protocolVersion="V4"
+            activeTab={activeTab}
+            onChangeTab={handleTabChange}
+            onSaveDisplayName={handleSaveDisplayName}
+            onToggleDiscoverability={handleToggleDiscoverability}
+            onOpenLowPowerMode={() => {}}
+            onClearLocalData={handleClearLocalData}
+          />
+        )}
+      </Animated.View>
     </FadeTransition>
   );
 };

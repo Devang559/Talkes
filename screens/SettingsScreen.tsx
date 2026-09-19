@@ -42,7 +42,6 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onChangeTab,
   onSaveDisplayName,
   onToggleDiscoverability,
-  onOpenLowPowerMode,
   onClearLocalData,
 }: SettingsScreenProps) => {
   const [displayName, setDisplayName] = useState(initialDisplayName);
@@ -130,20 +129,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({
               thumbColor={colors.white}
             />
           </View>
-          <View style={styles.settingDivider} />
-          <TouchableOpacity
-            style={styles.settingRow}
-            onPress={onOpenLowPowerMode}
-          >
-            <Text style={styles.settingIcon}>⚡</Text>
-            <View style={styles.settingTextWrap}>
-              <Text style={styles.settingTitle}>Low Power Mode</Text>
-              <Text style={styles.settingSubtitle}>
-                Conserve battery during mesh sync
-              </Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </TouchableOpacity>
+        
         </View>
 
         <Text style={[styles.label, styles.labelSpaced]}>APP INFO</Text>

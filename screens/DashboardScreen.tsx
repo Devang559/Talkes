@@ -50,9 +50,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Talkes Dashboard</Text>
-        <View style={styles.wifiBadge}>
-          <Text style={styles.wifiIcon}>📶</Text>
-        </View>
+       
       </View>
 
       <View style={styles.body}>
@@ -170,13 +168,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    borderBottomWidth: 1,
+    borderBottomWidth: 3,
     borderBottomColor: colors.border,
   },
-  headerTitle: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: colors.textPrimary },
   wifiBadge: {
-    width: 32,
-    height: 32,
+    width: 34,
+    height: 34,
     borderRadius: radius.full,
     backgroundColor: colors.cardMuted,
     alignItems: 'center',

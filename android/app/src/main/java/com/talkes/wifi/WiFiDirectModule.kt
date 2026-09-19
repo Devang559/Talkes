@@ -1,8 +1,10 @@
 package com.talkes.wifi
 
 import android.Manifest
+import android.content.ContentResolver
 import android.content.Context
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.net.wifi.WifiManager
 import android.net.wifi.p2p.WifiP2pConfig
 import android.net.wifi.p2p.WifiP2pInfo
@@ -20,7 +22,12 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.WritableMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
-import java.io.*
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.io.InputStream
+import java.io.InputStreamReader
+import java.io.BufferedReader
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -213,16 +220,13 @@ class WiFiDirectModule(private val reactContext: ReactApplicationContext) :
         executor.execute {
             var socket: Socket? = null
             var output: java.io.OutputStream? = null
-            var input: FileInputStream? = null
+            var input: InputStream? = null
             try {
-                val file = File(filePath)
-                val fileSize = file.length()
-                val fileName = file.name
+                val (stream, fileSize, fileName) = openFileReadStream(filePath)
 
                 socket = Socket()
                 socket?.connect(InetSocketAddress(peerAddress, TRANSFER_PORT), 30000)
                 output = socket?.getOutputStream()
-                input = FileInputStream(file)
 
                 val metadata = "$fileName|$fileSize\n"
                 output?.write(metadata.toByteArray())
@@ -233,7 +237,7 @@ class WiFiDirectModule(private val reactContext: ReactApplicationContext) :
                 var bytesRead: Int
 
                 while (true) {
-                    bytesRead = input?.read(buffer) ?: -1
+                    bytesRead = stream?.read(buffer) ?: -1
                     if (bytesRead == -1) break
                     output?.write(buffer, 0, bytesRead)
                     totalSent += bytesRead
@@ -267,12 +271,37 @@ class WiFiDirectModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
+    private data class FileInfo(
+        val stream: InputStream,
+        val size: Long,
+        val name: String
+    )
+
+    private fun openFileReadStream(filePath: String): FileInfo {
+        return if (filePath.startsWith("content://")) {
+            val uri = Uri.parse(filePath)
+            val resolver = reactContext.contentResolver
+            val stream = resolver.openInputStream(uri)
+                ?: throw IllegalArgumentException("Cannot open content URI: $filePath")
+            val size = resolver.query(uri, arrayOf(android.provider.OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getLong(0) else -1L
+            } ?: -1L
+            val name = resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else "file"
+            } ?: "file"
+            FileInfo(stream, size, name)
+        } else {
+            val file = File(filePath)
+            FileInfo(FileInputStream(file), file.length(), file.name)
+        }
+    }
+
     private fun handleClient(socket: Socket) {
         var input: InputStream? = null
         var output: FileOutputStream? = null
         try {
             input = socket.inputStream
-            val reader = java.io.BufferedReader(InputStreamReader(input))
+            val reader = BufferedReader(InputStreamReader(input))
 
             val metadataLine = reader.readLine()
             val parts = metadataLine.split("|")

@@ -52,9 +52,6 @@ const NearbyDiscoveryScreen: React.FC<NearbyDiscoveryScreenProps> = ({
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Nearby Discovery</Text>
-        <View style={styles.wifiBadge}>
-          <Text style={styles.wifiIcon}>📶</Text>
-        </View>
       </View>
 
       <View style={styles.body}>
